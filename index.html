@@ -1,0 +1,156 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>PolyLayout: Multi-room Manhattan Layout Estimation</title>
+    <link rel="icon" type="image/x-icon" href="static/images/favicon.ico">
+    <link rel="stylesheet" href="static/css/academicons.min.css">
+    <link rel="stylesheet" href="static/css/bulma.min.css">
+    <link rel="stylesheet" href="static/css/bulma-carousel.min.css">
+    <link rel="stylesheet" href="static/css/fontawesome.all.min.css">
+    <link rel="stylesheet" href="static/css/index.css">
+    <script src="static/js/bulma-carousel.min.js"></script>
+    <script defer src="static/js/fontawesome.all.min.js"></script>
+  </head>
+  <body>
+    <section class="hero">
+      <div class="container is-max-desktop">
+        <div class="hero-body has-text-centered pb-4">
+          <h1 class="title is-1">PolyLayout: Multi-room Manhattan Layout Estimation</h1>
+          <div class="is-size-5">
+            <!-- TODO: Update authors and links to their respective websites -->
+            <a href="https://ghanning.github.io" target="_blank">Gustav Hanning</a><sup>1</sup>,
+            <a href="https://b1ueber2y.me" target="_blank">Shaohui Liu</a><sup>2</sup>,
+            <a href="https://rpautrat.github.io" target="_blank">Rémi Pautrat</a><sup>3</sup>,
+            <a href="https://people.inf.ethz.ch/pomarc/" target="_blank">Marc Pollefeys</a><sup>2,3</sup>,
+            <a href="https://scholar.google.com/citations?user=YIzs6eoAAAAJ" target="_blank">Kalle Åström</a><sup>1</sup>,
+            <a href="https://vlarsson.github.io" target="_blank">Viktor Larsson</a><sup>1</sup>
+          </div>
+          <div class="is-size-5">
+            <sup>1</sup>Lund University &nbsp; &nbsp;
+            <sup>2</sup>ETH Zurich &nbsp; &nbsp;
+            <sup>3</sup>Microsoft Spatial AI Lab
+            <br>
+            European Conference on Computer Vision (2026)
+          </div>
+
+          <div class="buttons is-centered pt-4">
+            <a href="#" target="_blank" class="button is-medium is-dark is-rounded is-responsive"> <!-- TODO: Update link to paper -->
+              <span class="icon">
+                <i class="fas fa-file-pdf"></i>
+              </span>
+              <span>Paper</span>
+            </a>
+            <a href="https://github.com/ghanning/PolyLayout" target="_blank" class="button is-medium is-dark is-rounded is-responsive">
+              <span class="icon">
+                <i class="fab fa-github"></i>
+              </span>
+              <span>Code</span>
+            </a>
+            <a href="https://github.com/ghanning/MultiViewRoomLayout" target="_blank" class="button is-medium is-dark is-rounded is-responsive">
+              <span class="icon">
+                <i class="fas fa-database"></i>
+              </span>
+              <span>Datasets</span>
+            </a>
+            <a href="#" target="_blank" class="button is-medium is-dark is-rounded is-responsive"> <!-- TODO: Update link to arXiv -->
+              <span class="icon">
+                <i class="ai ai-arxiv"></i>
+              </span>
+              <span>arXiv</span>
+            </a>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="hero">
+      <div class="container is-max-desktop">
+        <div class="hero-body">
+          <video muted autoplay playsinline controls height="100%">
+            <source src="static/videos/22913.mp4" type="video/mp4">
+          </video>
+          <h5 class="subtitle is-5 has-text-centered">
+            Our room layout estimation method PolyLayout predicts the layout of multiple rooms simultaneously from posed images. By sharing the orientation and floor/ceiling height it can achieve higher accuracy than comparable single room methods.
+          </h5>
+        </div>
+      </div>
+    </section>
+
+    <section class="hero is-light" id="abstract">
+      <div class="container is-max-desktop">
+        <div class="hero-body has-text-centered">
+          <p class="title">Abstract</p>
+          <div class="content has-text-justified is-size-5">
+            Estimating room layouts from multi-view imagery is a core task for indoor scene understanding. Existing methods are typically limited either by poor generalization to new datasets or restrictive geometric assumptions of the room shape or camera configuration. Most also estimate rooms independently, failing to exploit shared building structure such as dominant directions, ground plane or ceiling height.
+            <br><br>
+            We propose PolyLayout, a multi-room layout estimation method that parameterizes room layouts as Manhattan 3D polygons and optimizes them jointly across multiple rooms. The optimization objective is predicted by a neural network on top of robust pre-trained visual features and trained end-to-end with supervision only on output room layouts. At the same time, camera projection and polygon updates remain explicit and model-based. This separation between learned scoring and geometry improves generalization to new datasets and camera parameters. During optimization, PolyLayout adaptively refines the polygon topology through iterative wall split and merge operations while jointly utilizing structural cues across rooms. We introduce two new multi-view multi-room layout benchmarks by providing layout annotations to existing datasets, and experiments show that PolyLayout outperforms prior approaches, both in terms of accuracy and robustness.
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="hero">
+      <div class="container is-max-desktop">
+        <div class="hero-body">
+          <h2 class="title">Results</h2>
+          <video muted autoplay playsinline loop height="100%">
+            <source src="static/videos/45109.mp4" type="video/mp4">
+          </video>
+          <h5 class="subtitle is-5 has-text-centered">
+            We compare our predicted room layouts with those of SceneScript, Plane-DUSt3R and PixCuboid. The results are shown above for one scene in Aria Synthetic Environments. Predictions are visualized in <span class="pred">green</span> and the ground truth layouts in <span class="gt">blue</span>.
+          </h5>
+        </div>
+      </div>
+    </section>
+
+    <!--
+    <section class="hero is-light">
+      <div class="container">
+        <div class="hero-body">
+          <p class="title">Poster</p>
+          <div class="content poster">
+            <embed src="static/pdf/dummy.pdf" type="application/pdf">
+          </div>
+        </div>
+      </div>
+    </section>
+    -->
+
+    <section class="section" id="bibtex">
+      <div class="container is-max-desktop">
+        <h2 class="title">BibTeX</h2>
+        <pre class="is-relative">
+<code id="bibtex-code">
+@inproceedings{hanning2026polylayout,
+  title={{PolyLayout: Multi-room Manhattan Layout Estimation}},
+  author={Hanning, Gustav and Liu, Shaohui and Pautrat, Rémi and Pollefeys, Marc and Åström, Kalle and Larsson, Viktor},
+  booktitle={European Conference on Computer Vision},
+  year={2026},
+}
+</code><!--
+       --><button class="button is-absolute clipboard-button is-pulled-right m-2" onclick="copyToClipboard('#bibtex-code')">
+            <span class="icon is-small">
+              <i class="fas fa-copy"></i>
+            </span>
+          </button><!--
+     --></pre>
+      </div>
+    </section>
+  </body>
+
+  <script type="text/javascript">
+    function copyToClipboard(elemId) {
+        let elem = document.querySelector(elemId);
+        navigator.clipboard.writeText(elem.innerText);
+    }
+
+    bulmaCarousel.attach('#image-carousel', {
+      pagination: false,
+      loop: true,
+      infinite: true,
+      autoplay: true,
+    });
+  </script>
+</html>
