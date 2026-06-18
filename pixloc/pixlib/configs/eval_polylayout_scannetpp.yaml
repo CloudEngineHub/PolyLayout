@@ -1,0 +1,35 @@
+data:
+  name: scannetpp
+  num_views: 10
+  resize: 512
+  resize_by: min
+  init_layout: polygon_hull
+  batch_size: null
+  num_workers: 8
+  seed: 1
+  read_line_segments: true
+model:
+  name: layout_refiner
+  duplicate_optimizer_per_scale: true
+  point_sampling: guided
+  num_points2D: 256
+  pre_optimize_vp: true
+  vp_opt_cam_margin: 3.0
+  split_layout_thr: 1.0
+  extractor:
+    name: dinov2
+    output_scales: [0, 2, 4]
+    num_tokens: 1225
+    checkpointed: true
+  optimizer:
+    name: multi_room_optimizer
+    shared_floor: true
+    shared_ceiling: true
+    num_iters: 15
+    loss_fn: scaled_barron(0, 0.1)
+    edge_cost_scale: 0.05
+    vp_cost_scale: 40.0
+    vp_dist_thr: 0.05
+    perimeter_cost_scale: [0.0, 0.0005, 0.0005]
+    clamp_dd: 0.5
+    simplify_layout_dd_thr: 0.05

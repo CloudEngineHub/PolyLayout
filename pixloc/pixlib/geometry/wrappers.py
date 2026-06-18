@@ -8,6 +8,7 @@ import inspect
 import math
 from typing import Union, Tuple, List, Dict, NamedTuple
 import torch
+from torch import Tensor
 import numpy as np
 
 from .optimization import skew_symmetric, so3exp_map
@@ -19,7 +20,7 @@ def autocast(func):
        if they are numpy arrays. Use the device and dtype of the wrapper.
     """
     @functools.wraps(func)
-    def wrap(self, *args):
+    def wrap(self, *args, **kwargs):
         device = torch.device('cpu')
         dtype = None
         if isinstance(self, TensorWrapper):
@@ -35,7 +36,55 @@ def autocast(func):
                 arg = torch.from_numpy(arg)
                 arg = arg.to(device=device, dtype=dtype)
             cast_args.append(arg)
-        return func(self, *cast_args)
+        return func(self, *cast_args, **kwargs)
+
+    return wrap
+
+
+def nobatch(func):
+    """Raise an error if the method is called on a batched TensorWrapper.
+    """
+    @functools.wraps(func)
+    def wrap(self, *args, **kwargs):
+        if self.shape:
+            raise NotImplementedError(
+                f"Batched version of {self.__class__.__name__}.{func.__name__} not implemented.")
+        return func(self, *args, **kwargs)
+    return wrap
+
+
+def autobatch(func):
+    """Provide automatic batching for TensorWrapper methods.
+    """
+    @functools.wraps(func)
+    def wrap(self, *args, **kwargs):
+        if self.shape:
+            outputs = []
+
+            for i in range(self.shape[0]):
+                args_i = []
+                for arg in args:
+                    if isinstance(arg, (np.ndarray, Tensor)):
+                        arg = arg[i]
+                    args_i.append(arg)
+                outputs.append(wrap(self[i], *args_i, **kwargs))
+
+            if isinstance(outputs[0], tuple):
+                num_outputs = len(outputs[0])
+                stacked = []
+                for i in range(num_outputs):
+                    ith_outputs = [o[i] for o in outputs]
+                    if isinstance(ith_outputs[0], (Tensor, TensorWrapper)):
+                        stacked.append(torch.stack(ith_outputs))
+                    else:
+                        stacked.append(ith_outputs)
+                return tuple(stacked)
+            elif isinstance(outputs[0], (Tensor, TensorWrapper)):
+                return torch.stack(outputs)
+            else:
+                return outputs
+        else:
+            return func(self, *args, **kwargs)
 
     return wrap
 
@@ -91,9 +140,21 @@ class TensorWrapper:
             dim -= 1
         return self.__class__(self._data.unsqueeze(dim))
 
+    def dim(self) -> int:
+        return self._data.dim() - 1
+
     @classmethod
     def stack(cls, objects: List, dim=0, *, out=None):
+        if dim < 0:
+            dim -= 1
         data = torch.stack([obj._data for obj in objects], dim=dim, out=out)
+        return cls(data)
+
+    @classmethod
+    def cat(cls, objects: List, dim=0, *, out=None):
+        if dim < 0:
+            dim -= 1
+        data = torch.cat([obj._data for obj in objects], dim=dim, out=out)
         return cls(data)
 
     @classmethod
@@ -102,6 +163,8 @@ class TensorWrapper:
             kwargs = {}
         if func is torch.stack:
             return self.stack(*args, **kwargs)
+        elif func is torch.cat:
+            return self.cat(*args, **kwargs)
         else:
             return NotImplemented
 

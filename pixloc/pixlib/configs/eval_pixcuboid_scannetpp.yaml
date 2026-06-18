@@ -5,7 +5,7 @@ data:
   resize_by: min
   resize: 512
   crop: false
-  init_cuboid: cameras
+  init_layout: cuboid_cameras
   batch_size: 6
   num_workers: 8
   seed: 1

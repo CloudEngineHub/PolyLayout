@@ -145,11 +145,11 @@ class BaseDataset(metaclass=ABCMeta):
     def get_data_loader(self, split, shuffle=None, pinned=True,
                         distributed=False):
         """Return a data loader for a given split."""
-        assert split in ['train', 'val', 'test']
+        # assert split in ['train', 'val', 'test']
         dataset = self.get_dataset(split)
         try:
             batch_size = self.conf[split+'_batch_size']
-        except omegaconf.MissingMandatoryValue:
+        except (omegaconf.MissingMandatoryValue, omegaconf.errors.ConfigKeyError):
             batch_size = self.conf.batch_size
         num_workers = self.conf.get('num_workers', batch_size)
         if distributed:

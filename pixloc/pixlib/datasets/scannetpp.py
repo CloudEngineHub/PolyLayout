@@ -2,21 +2,21 @@ import json
 import logging
 import pickle
 from pathlib import Path
-from typing import Tuple
+from typing import List, Optional, Tuple
 
 import numpy as np
 import torch
 import tqdm
+from plyfile import PlyData
 
+from .ase import flatten_image_tuples
 from .base_dataset import BaseDataset, collate
-from .cuboid_sampling import (
-    sample_cuboid_cams, sample_cuboid_gt, sample_cuboid_random)
+from .edge_rendering import EdgeRenderer
+from .layout_sampling import R_from_cams, sample_layout
 from .line_segments import read_line_segments
 from .view import numpy_image_to_torch, read_view
-from ..geometry.cuboid import Cuboid
-from ..geometry import Camera, Pose
+from ..geometry import Camera, Cuboid, Polygon, Pose
 from ...settings import DATA_PATH
-from ...visualization.cuboid import draw_edges
 
 logger = logging.getLogger(__name__)
 
@@ -41,19 +41,22 @@ class ScanNet(BaseDataset):
         'dataset_dir': 'scannetpp/',
         'image_subpath': 'data/{}/dslr/undistorted_images/',
         'transform_subpath': 'data/{}/dslr/nerfstudio/transforms_undistorted.json',
-        'info_dir': 'scannetpp_pixcuboid_training/',
+        'pointcloud_subpath': 'data/{}/scans/mesh_aligned_0.05.ply',
+        'info_dir': 'scannetpp_polylayout_training/',
         'read_info_files': False,
 
         'train_num_per_scene': None,
         'val_num_per_scene': None,
         'test_num_per_scene': None,
+        'multi_room_num_per_scene': None,
 
         'num_views': 5,
-        'init_cuboid': None,
-        'init_cuboid_max_rot': float(np.deg2rad(15.0)),
+        'init_layout': None,
+        'init_layout_max_rot': float(np.deg2rad(15.0)),
+        'init_layout_cam_margin': 0.5,
         'init_cuboid_max_trans': 0.5,
         'init_cuboid_max_grow': [-0.5, 0.5],
-        'init_cuboid_cam_margin': 0.5,
+        'init_polygon_max_shift': [-0.5, 0.5],
 
         'grayscale': False,
         'resize': None,
@@ -66,11 +69,15 @@ class ScanNet(BaseDataset):
         'max_num_points3D': 500,
         'force_num_points3D': False,
 
+        'flatten': False,
+
         'read_line_segments': False,
         'max_num_line_segments': 100,
 
         'render_edge_image': False,
         'edge_image_line_width': 3,
+
+        'read_pointcloud': False,
     }
 
     def _init(self, conf):
@@ -82,37 +89,45 @@ class ScanNet(BaseDataset):
 
 class _Dataset(torch.utils.data.Dataset):
     def __init__(self, conf, split):
-        if conf.init_cuboid is None:
-            raise ValueError('The initial cuboid sampling strategy is required.')
+        if conf.init_layout is None:
+            raise ValueError('The initial layout sampling strategy is required.')
 
         self.root = Path(DATA_PATH, conf.dataset_dir)
         self.conf, self.split = conf, split
 
-        mvc_dir = Path(__file__).parent / 'scannetpp'
+        data_dir = Path(__file__).parent / 'scannetpp'
 
-        with open(mvc_dir / f'scenes_{split}.txt') as f:
+        with open(data_dir / f'scenes_{split}.txt') as f:
             self.scenes = [line.strip() for line in f]
 
-        with open(mvc_dir / f'layouts_{split}.json') as f:
-            self.cuboids = json.load(f)
+        with open(data_dir / f'layouts_{split}.json') as f:
+            self.layouts = json.load(f)
 
-        with open(mvc_dir / f'images_{split}.json') as f:
+        with open(data_dir / f'images_{split}.json') as f:
             self.image_tuples = json.load(f)
 
-        self.read_transform_files()
+        if conf.flatten:
+            assert split == 'multi_room'
+            self.image_tuples = flatten_image_tuples(self.image_tuples)
+
+        scenes_with_files = set(s.split(':')[0] for s in self.scenes)
+
+        self.read_transform_files(scenes_with_files)
 
         if self.conf.read_info_files:
-            self.read_info_files()
+            self.read_info_files(scenes_with_files)
 
         if self.conf[self.split + '_num_per_scene']:
             self.sample_new_items(conf.seed)
         else:
             self.items = self.image_tuples
 
-    def read_transform_files(self):
+        self.renderer_cache = {}
+
+    def read_transform_files(self, scenes):
         self.transforms = {}
         self.frames = {}
-        for scene in self.scenes:
+        for scene in scenes:
             path = self.root / self.conf.transform_subpath.format(scene)
             with open(path) as f:
                 transforms = json.load(f)
@@ -122,23 +137,17 @@ class _Dataset(torch.utils.data.Dataset):
             for f in transforms['frames'] + transforms['test_frames']:
                 self.frames[scene][f['file_path']] = f
 
-    def read_info_files(self):
+    def read_info_files(self, scenes):
         logger.info(f'Reading info files')
         self.images, self.points3D, self.p3D_idx = {}, {}, {}
-        # The below are now instead read from the transform files,
-        # so that preprocessing is not required for inference.
-        # self.poses, self.intrinsics, self.image_size = {}, {}, {}
         self.name2idx = {}
-        for scene in tqdm.tqdm(self.scenes):
+        for scene in tqdm.tqdm(scenes):
             path = Path(DATA_PATH, self.conf.info_dir, scene + '.pkl')
             with open(path, 'rb') as f:
                 info = pickle.load(f)
             self.images[scene] = info['image_names']
             self.points3D[scene] = info['points3D']
             self.p3D_idx[scene] = info['p3D_idx']
-            # self.poses[scene] = info['poses']
-            # self.intrinsics[scene] = info['intrinsics']
-            # self.image_size[scene] = info['image_size']
             self.name2idx[scene] = {name: idx for idx, name in enumerate(self.images[scene])}
 
     def sample_new_items(self, seed):
@@ -160,7 +169,14 @@ class _Dataset(torch.utils.data.Dataset):
 
         np.random.RandomState(seed).shuffle(self.items)
 
-    def _read_view(self, scene, image_name, cuboid_gt, seed):
+    def _get_renderer(self, width: int, height: int) -> EdgeRenderer:
+        worker_info = torch.utils.data.get_worker_info()
+        worker_id = 0 if worker_info is None else worker_info.id
+        if worker_id not in self.renderer_cache:
+            self.renderer_cache[worker_id] = EdgeRenderer(width, height)
+        return self.renderer_cache[worker_id]
+
+    def _read_view(self, scene, image_name, layout_gt, seed):
         image_dir = self.root / self.conf.image_subpath.format(scene)
         image_path = image_dir / image_name
 
@@ -208,11 +224,54 @@ class _Dataset(torch.utils.data.Dataset):
             data['l2D_mask'] = torch.from_numpy(l2D_mask)
 
         if self.conf.render_edge_image:
-            edge_image = 255.0 * np.ones(data['image'].shape[1:])
-            draw_edges(cuboid_gt @ T.inv(), data['camera'], edge_image, 0.0,
-                       self.conf.edge_image_line_width)
+            width, height = data['camera'].size.int().numpy()
+            renderer = self._get_renderer(width, height)
+            edge_image = renderer.render(layout_gt, data['camera'], T,
+                                         self.conf.edge_image_line_width)
+            edge_image = 255.0 - edge_image[:, :, 0].astype(np.float32)
             data['edge_image'] = numpy_image_to_torch(edge_image)
 
+        return data
+
+    def _read_room(self, scene: str, room: Optional[str], image_list: List[str], seed: int):
+        layout = self.layouts[scene]
+        if room is not None:
+            layout = layout[room]
+
+        if 'R' in layout and 't' in layout and 's' in layout:  # Ground truth cuboid
+            R, t, s = (np.array(layout[key]) for key in ('R', 't', 's'))
+            layout_gt = Cuboid.from_Rts(R, t, s)
+        elif 'R' in layout and 'd' in layout:  # Ground truth polygon
+            R, d = (np.array(layout[key]) for key in ('R', 'd'))
+            layout_gt = Polygon.from_Rd(R, d)
+        else:  # Ground truth mesh
+            layout_gt = None
+
+        data = []
+        for name in image_list[:self.conf.num_views]:
+            data.append(self._read_view(scene.split(':')[0], name, layout_gt, seed))
+        data = collate(data)
+
+        if self.split == 'multi_room':  # Ground truth is either cuboid or mesh
+            if layout_gt is not None:
+                verts, faces = layout_gt.corners, layout_gt.faces
+            else:
+                verts, faces = (np.array(layout[key]) for key in ('verts', 'faces'))
+            def pad_array(arr: np.ndarray, target_len: int) -> np.ndarray:
+                num_pad = target_len - arr.shape[0]
+                assert num_pad >= 0
+                return np.pad(arr, ((0, num_pad), (0, 0)))
+            # Pad to fixed size for batching
+            verts = pad_array(verts, 60)
+            faces = pad_array(faces, 120)
+            data['verts_gt'] = torch.from_numpy(verts).float()
+            data['faces_gt'] = torch.from_numpy(faces)
+        else:
+            data['layout_gt'] = layout_gt.float()
+
+        data['scene'] = scene
+        if room is not None:
+            data['room'] = room
         return data
 
     def __getitem__(self, idx):
@@ -220,28 +279,34 @@ class _Dataset(torch.utils.data.Dataset):
         scene = image_tuple['scene']
         seed = self.conf.seed + idx
 
-        R, t, s = (np.array(self.cuboids[scene][key]) for key in ('R', 't', 's'))
-        cuboid_gt = Cuboid.from_Rts(R, t, s)
+        if self.split == 'multi_room' and not self.conf.flatten:
+            data = []
+            for room, image_list in image_tuple['images'].items():
+                data.append(self._read_room(scene, room, image_list, seed))
 
-        data = []
-        for name in image_tuple['images'][:self.conf.num_views]:
-            data.append(self._read_view(scene, name, cuboid_gt, seed))
-        data = collate(data)
+            R = R_from_cams(torch.cat([d['T_w2cam'] for d in data]), seed)
+            for d in data:
+                d['layout_init'] = sample_layout(
+                    self.conf, d['T_w2cam'], seed, R=R,
+                    layout_gt=d.get('layout_gt')).float()
 
-        if self.conf.init_cuboid == 'ground_truth':
-            assert self.split != 'test'
-            cuboid_init = sample_cuboid_gt(
-                self.conf, cuboid_gt, data['T_w2cam'], seed)
-        elif self.conf.init_cuboid == 'cameras':
-            cuboid_init = sample_cuboid_cams(data['T_w2cam'], seed)
-        elif self.conf.init_cuboid == 'random':
-            cuboid_init = sample_cuboid_random(data['T_w2cam'], seed)
+            data = collate(data)
         else:
-            raise ValueError(self.conf.init_cuboid)
+            room = image_tuple.get('room', None)
+            data = self._read_room(scene, room, image_tuple['images'], seed)
+            data['layout_init'] = sample_layout(
+                self.conf, data['T_w2cam'], seed, layout_gt=data.get('layout_gt')).float()
+            if self.split == 'train':  # Train on polygons, even if ground truth is cuboid
+                for key in ('layout_gt', 'layout_init'):
+                    if key in data and isinstance(data[key], Cuboid):
+                        data[key] = Polygon.from_cuboid(data[key]).float()
 
-        data['cuboid_init'] = cuboid_init.float()
-        data['cuboid_gt'] = cuboid_gt.float()
-        data['scene'] = scene
+        if self.conf.read_pointcloud:
+            points_path = self.root / self.conf.pointcloud_subpath.format(scene)
+            mesh = PlyData.read(points_path, known_list_len={'face': {'vertex_indices': 3}})
+            points = np.stack([mesh['vertex']['x'], mesh['vertex']['y'], mesh['vertex']['z']]).T
+            data['pointcloud'] = torch.from_numpy(points).float()
+
         return data
 
     def __len__(self):

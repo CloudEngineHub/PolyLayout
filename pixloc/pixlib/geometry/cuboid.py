@@ -269,7 +269,7 @@ class Cuboid(TensorWrapper):
         '''
         R_w2cam, t_w2cam = T_w2cam.R, T_w2cam.t.unsqueeze(-1)
         R, d = self.R, self.d
-        eps = 1e-9
+        eps = 1e-8
 
         n3d = torch.cat([torch.eye(3), torch.eye(3)], dim=0).to(p2d)
         n3d_w = (n3d @ R).unsqueeze(-1)

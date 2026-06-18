@@ -11,3 +11,8 @@ tensorboard
 plyfile
 tqdm
 wandb
+projectaria-tools
+mapbox-earcut
+shapely
+moderngl
+moge @ git+https://github.com/microsoft/MoGe.git

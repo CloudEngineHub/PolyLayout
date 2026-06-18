@@ -137,7 +137,7 @@ def training(rank, conf, output_dir, args):
             # the user has to make sure that the weights are compatible
             init_cp = get_last_checkpoint(conf.train.load_experiment)
             init_cp = torch.load(str(init_cp), map_location='cpu',
-                                 weights_only=True)
+                                 weights_only=False)
         else:
             init_cp = None
 

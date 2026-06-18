@@ -1,0 +1,37 @@
+data:
+  name: scannetpp
+  num_views: 1
+  resize_by: min
+  resize: 512
+  train_num_per_scene: 72 # 150
+  val_num_per_scene: 10
+  init_layout: cuboid_cameras
+  max_num_points3D: 0
+  render_edge_image: true
+  edge_image_line_width: 6
+  batch_size: 10
+  num_workers: 8
+  seed: 1
+model:
+  name: layout_edge_detector
+  loss: MSELoss
+  weight_edge: 5.0
+  duplicate_optimizer_per_scale: true
+  extractor:
+    name: dinov2
+    output_scales: [0, 2, 4]
+    num_tokens: 1225
+    checkpointed: true
+  optimizer:
+    name: layout_optimizer
+train:
+  seed: 0
+  epochs: 3
+  log_every_iter: 50
+  eval_every_iter: 500
+  dataset_callback_fn: sample_new_items
+  lr: 5.0e-06
+  lr_scaling: [[0.1, ['extractor.encoder']]]
+  clip_grad: 1.0
+  median_metrics:
+  - loss/mse

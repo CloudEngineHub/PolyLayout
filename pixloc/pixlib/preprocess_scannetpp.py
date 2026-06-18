@@ -168,14 +168,16 @@ def preprocess_and_write(scene, root, out_dir, **kwargs):
 
 if __name__ == '__main__':
     root = DATA_PATH / 'scannetpp/'
-    out_dir = DATA_PATH / 'scannetpp_pixcuboid_training/'
+    out_dir = DATA_PATH / 'scannetpp_polylayout_training/'
     out_dir.mkdir(exist_ok=True)
 
     scenes = []
     for split in ('train', 'val', 'test'):
         split_path = Path(__file__).parent / 'datasets' / 'scannetpp' / f'scenes_{split}.txt'
         with open(split_path) as f:
-            scenes.extend([line.strip() for line in f])
+            scenes_split = [line.strip() for line in f]
+        scenes_split = set([s.split(':')[0] for s in scenes_split])
+        scenes.extend(list(scenes_split))
 
     logger.info(f'Found {len(scenes)} scenes.')
 
