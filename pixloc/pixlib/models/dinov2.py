@@ -2,7 +2,8 @@ import torch
 import torch.nn.functional as F
 from omegaconf import OmegaConf
 
-from moge.model.modules import ConvStack, DINOv2Encoder
+from moge.model.modules.conv_stack import ConvStack
+from moge.model.modules.dinov2_encoder import DINOv2Encoder
 from moge.utils.geometry_torch import normalized_view_plane_uv
 
 from .base_model import BaseModel
