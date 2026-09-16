@@ -631,16 +631,9 @@ class Polygon(TensorWrapper):
             if return_jacobian:
                 J_p3d_λ = (p3d_cam @ R_w2cam).unsqueeze(-1)
 
-                J_λ_d = 1.0 / (p3d_cam @ ntRt.transpose(-2, -1) + eps)
-                Rn = R_w2cam @ n3d_wi
-                J_λ_n = (
-                    p3d_cam @ Rn * t_w2cam.transpose(-2, -1)
-                    - (Rn.transpose(-2, -1) @ t_w2cam + torch.nan_to_num(d[..., i, None, None]))
-                    * p3d_cam
-                ) / (p3d_cam @ Rn + eps) ** 2
-                J_λ_nd = torch.cat([J_λ_n @ R_w2cam, J_λ_d], dim=-1).unsqueeze(
-                    -2
-                )
+                J_λ_nd = (torch.cat([-p3d_wi, torch.ones(p3d_wi.shape[:-1] + (1, )).to(p3d_wi)], dim=-1) / (
+                    p3d_cam @ ntRt.transpose(-2, -1) + eps
+                )).unsqueeze(-2)
 
                 J_n_R = skew_symmetric(n3d_wi[..., 0]) @ R.transpose(-2, -1)
                 J_n_d = torch.zeros(self.shape + (3, self.d.shape[-1])).to(p2d)
